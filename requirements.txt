@@ -1,0 +1,21 @@
+python-dotenv>=1.0
+requests>=2.31
+
+# LLM SDKs (keep whichever provider you actually use)
+anthropic>=0.34
+openai>=1.40
+
+# TTS
+elevenlabs>=1.5
+
+# Video assembly
+moviepy>=1.0.3
+Pillow>=10.0
+
+# Captions (only needed if not using TTS-provided timestamps)
+openai-whisper>=20231117
+
+# YouTube upload
+google-auth>=2.30
+google-auth-oauthlib>=1.2
+google-api-python-client>=2.130
