@@ -35,6 +35,15 @@ from pipeline import config, llm_client
 # pronunciation too) instead of working around it in captions.py.
 _DASH_RUN = re.compile(r"\s*[–—]\s*")
 
+# ElevenLabs' TTS reliably mispronounces "BCE"/"CE" next to a year number —
+# in testing it didn't just mangle the abbreviation, it derailed the rest of
+# the sentence into hallucinated words. "BC"/"AD" are common enough in TTS
+# training data to pronounce cleanly and mean exactly the same years, so swap
+# them in before the text ever reaches TTS (word-boundaried so this doesn't
+# touch "CE" as a substring of an unrelated word).
+_ERA_BCE = re.compile(r"\bBCE\b")
+_ERA_CE = re.compile(r"\bCE\b")
+
 MAX_EXTRA_BEATS_PER_FACT = 1  # a fact may have at most this many beats beyond its first
 MAX_FACTS_WITH_EXTRA_BEAT = 3  # at most this many of the FACTS_PER_VIDEO facts may use it
 
@@ -169,6 +178,8 @@ def _sanitize_text(text: str) -> str:
     text = text.replace("‘", "'").replace("’", "'")
     text = text.replace("“", '"').replace("”", '"')
     text = text.replace("…", "...")
+    text = _ERA_BCE.sub("BC", text)
+    text = _ERA_CE.sub("AD", text)
     return text
 
 

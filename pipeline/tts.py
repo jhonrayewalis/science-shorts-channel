@@ -12,6 +12,8 @@ script_writer.py): "countdown" (hook/facts/closer) and "hook" (hook/payoff).
   to recover word-level timestamps.
 """
 import base64
+import difflib
+import re
 from pathlib import Path
 
 from pipeline import config, script_writer
@@ -20,6 +22,18 @@ DEFAULT_MODELS = {
     "elevenlabs": "eleven_multilingual_v2",
     "openai": "gpt-4o-mini-tts",
 }
+
+# ElevenLabs generation isn't fully deterministic — the same text occasionally
+# comes back with the narration derailing into hallucinated words (observed
+# in production on dense numeric content like year ranges). Its own
+# alignment data can't catch this: that's a forced alignment of the AUDIO
+# against the INTENDED text, so it still returns "clean" timestamps even when
+# the audio itself says something else. Independently transcribing the
+# result and comparing against the intended text catches that; regenerating
+# (a fresh stochastic sample) reliably fixes it in practice.
+TTS_QA_ATTEMPTS = 3
+_MIN_TRANSCRIPT_SIMILARITY = 0.75
+_WORD_RE = re.compile(r"[a-z0-9']+")
 
 _whisper_model = None
 
@@ -93,13 +107,44 @@ def _synthesize_line(text: str, out_path: Path) -> tuple[Path, list[dict]]:
     """
     Returns (path_to_audio_file, word_timestamps) where word_timestamps is a
     list like [{"word": "The", "start": 0.0, "end": 0.18}, ...]
+
+    Retries generation up to TTS_QA_ATTEMPTS times if the audio doesn't
+    transcribe back to (roughly) the intended text — see the TTS_QA_ATTEMPTS
+    comment above for why that check is necessary.
     """
-    if config.TTS_PROVIDER == "elevenlabs":
-        return _synthesize_elevenlabs(text, out_path)
-    elif config.TTS_PROVIDER == "openai":
-        return _synthesize_openai(text, out_path)
-    else:
-        raise ValueError(f"Unknown TTS_PROVIDER: {config.TTS_PROVIDER!r}")
+    audio, words = None, None
+    for attempt in range(TTS_QA_ATTEMPTS):
+        if config.TTS_PROVIDER == "elevenlabs":
+            audio, words = _synthesize_elevenlabs(text, out_path)
+            transcript_words = _transcribe_word_timestamps(audio)
+        elif config.TTS_PROVIDER == "openai":
+            audio, words = _synthesize_openai(text, out_path)
+            transcript_words = words  # already came from a Whisper transcription
+        else:
+            raise ValueError(f"Unknown TTS_PROVIDER: {config.TTS_PROVIDER!r}")
+
+        similarity = _transcript_similarity(text, transcript_words)
+        if similarity >= _MIN_TRANSCRIPT_SIMILARITY:
+            return audio, words
+        print(
+            f">>> WARNING: TTS output for {out_path.name!r} didn't match the "
+            f"intended text closely enough (similarity {similarity:.2f}) - "
+            f"regenerating (attempt {attempt + 1}/{TTS_QA_ATTEMPTS})"
+        )
+
+    print(
+        f">>> WARNING: TTS QA still failing after {TTS_QA_ATTEMPTS} attempts "
+        f"for {out_path.name!r}; keeping the last attempt anyway."
+    )
+    return audio, words
+
+
+def _transcript_similarity(intended_text: str, transcript_words: list[dict]) -> float:
+    intended = _WORD_RE.findall(intended_text.lower())
+    if not intended:
+        return 1.0
+    transcribed = _WORD_RE.findall(" ".join(w["word"] for w in transcript_words).lower())
+    return difflib.SequenceMatcher(a=intended, b=transcribed).ratio()
 
 
 def _synthesize_elevenlabs(text: str, out_path: Path) -> tuple[Path, list[dict]]:
@@ -182,10 +227,36 @@ def _transcribe_word_timestamps(audio_path: Path) -> list[dict]:
 def _get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
+        _ensure_ffmpeg_on_path()
         import whisper
 
         _whisper_model = whisper.load_model("base")
     return _whisper_model
+
+
+def _ensure_ffmpeg_on_path() -> None:
+    """
+    Whisper shells out to a literal `ffmpeg` on PATH — moviepy's bundled
+    imageio-ffmpeg binary doesn't satisfy that (its filename is platform-
+    specific, e.g. ffmpeg-macos-aarch64-v7.1, so PATH lookup for the exact
+    name "ffmpeg" still fails even with its directory on PATH). CI installs
+    a real ffmpeg (see publish.yml), but local dev environments often only
+    have the bundled one, so fall back to a symlink shim named "ffmpeg".
+    """
+    import os
+    import shutil
+    import tempfile
+
+    if shutil.which("ffmpeg"):
+        return
+    import imageio_ffmpeg
+
+    shim_dir = Path(tempfile.gettempdir()) / "science_shorts_ffmpeg_shim"
+    shim_dir.mkdir(exist_ok=True)
+    shim_path = shim_dir / "ffmpeg"
+    if not shim_path.exists():
+        shim_path.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+    os.environ["PATH"] = str(shim_dir) + os.pathsep + os.environ.get("PATH", "")
 
 
 if __name__ == "__main__":
