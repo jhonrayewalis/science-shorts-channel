@@ -8,9 +8,10 @@ name: Generate science short (approval gate)
 
 on:
   schedule:
-    # Runs at 14:00 UTC daily — adjust to your preferred generation time.
-    # Cron uses UTC regardless of your local timezone.
-    - cron: "0 14 * * *"
+    # Twice a day, 12 hours apart — adjust to your preferred generation
+    # times. Cron uses UTC regardless of your local timezone.
+    - cron: "0 14 * * *"  # ~morning for US audiences (10am ET / 7am PT)
+    - cron: "0 2 * * *"   # ~evening for US audiences (10pm ET / 7pm PT)
   workflow_dispatch: {}  # lets you trigger a manual run from the Actions tab for testing
 
 permissions:
