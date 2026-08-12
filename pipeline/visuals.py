@@ -189,7 +189,11 @@ def _generate_image_replicate(prompt: str, out_dir: Path, label: str) -> Path:
     # burst of 1 (Replicate's own policy) — a video needing several images
     # in a row (one per hook-format beat) can exceed that burst and either
     # queue long enough to blow past a client-side read timeout, or get an
-    # explicit 429. Both are transient and worth retrying with a delay.
+    # explicit 429. ModelError ("Director: unexpected error handling
+    # prediction") is a separate, transient failure on Replicate's own
+    # infrastructure side, not caused by our prompt — also worth retrying.
+    # Note ModelError is a sibling of ReplicateError (both subclass
+    # ReplicateException), not a subclass of it, so it needs its own check.
     client = replicate.Client(api_token=config.IMAGE_GEN_API_KEY, timeout=httpx.Timeout(240.0))
     model_input = {
         "prompt": prompt,
@@ -203,9 +207,10 @@ def _generate_image_replicate(prompt: str, out_dir: Path, label: str) -> Path:
         try:
             output = client.run(config.IMAGE_GEN_MODEL or DEFAULT_IMAGE_MODELS["replicate"], input=model_input)
             break
-        except (httpx.TimeoutException, replicate.exceptions.ReplicateError) as exc:
+        except (httpx.TimeoutException, replicate.exceptions.ReplicateError, replicate.exceptions.ModelError) as exc:
             is_throttled = isinstance(exc, replicate.exceptions.ReplicateError) and exc.status == 429
-            if not (isinstance(exc, httpx.TimeoutException) or is_throttled):
+            is_transient = isinstance(exc, (httpx.TimeoutException, replicate.exceptions.ModelError)) or is_throttled
+            if not is_transient:
                 raise
             if attempt == REPLICATE_ATTEMPTS - 1:
                 raise
