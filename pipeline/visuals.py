@@ -68,7 +68,14 @@ def _source_visuals_countdown(script: dict, out_dir: Path) -> dict:
     used_photo_ids: set[int] = set()
     result = {}
 
-    result["hook"] = _source_for_keywords(["science", "mystery"], out_dir, "hook", used_photo_ids)
+    result["hook"] = _source_for_keywords(
+        script["hook_visual_keywords"],
+        out_dir,
+        "hook",
+        used_photo_ids,
+        prefer_ai=script.get("hook_prefer_ai_visual", False),
+        is_internal_anatomy=script.get("hook_is_internal_anatomy", False),
+    )
 
     for i, beat in enumerate(script_writer.flatten_countdown_facts(script)):
         result[f"fact_{i}"] = _source_for_keywords(

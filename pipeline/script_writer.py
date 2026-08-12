@@ -41,6 +41,9 @@ MAX_FACTS_WITH_EXTRA_BEAT = 3  # at most this many of the FACTS_PER_VIDEO facts 
 SCRIPT_SCHEMA_EXAMPLE = {
     "format": "countdown",
     "hook": "The ocean has swallowed more secrets than space has stars.",
+    "hook_visual_keywords": ["bioluminescent deep sea creature", "dark ocean trench"],
+    "hook_prefer_ai_visual": False,
+    "hook_is_internal_anatomy": False,
     "facts": [
         {
             "rank": 5,
@@ -208,6 +211,13 @@ def _verify_countdown_facts(script: dict) -> dict:
 
 def _validate_countdown_script(script: dict) -> None:
     assert "hook" in script and script["hook"], "Script missing hook"
+    assert script.get("hook_visual_keywords"), "Script missing hook_visual_keywords"
+    assert isinstance(script.get("hook_prefer_ai_visual"), bool), (
+        "Script missing boolean hook_prefer_ai_visual"
+    )
+    assert isinstance(script.get("hook_is_internal_anatomy"), bool), (
+        "Script missing boolean hook_is_internal_anatomy"
+    )
     facts = script.get("facts", [])
     assert len(facts) == config.FACTS_PER_VIDEO, (
         f"Expected {config.FACTS_PER_VIDEO} facts, got {len(facts)}"
@@ -250,6 +260,12 @@ def _build_script_prompt(topic: dict) -> str:
         f"about \"{topic['topic']}\" (category: {topic['category']}).\n\n"
         "Structure:\n"
         "- A one-sentence hook (under 15 words) creating curiosity, said before any facts.\n"
+        "- `hook_visual_keywords`: 2-4 concrete, filmable subjects for ONE single, cohesive, "
+        "physically real scene that captures the hook line's visual idea — specific to this "
+        "topic, not a generic placeholder like \"science\" or \"mystery\". Same rules as the "
+        "per-beat visual_keywords below (no size-comparison objects, no abstract processes).\n"
+        "- `hook_prefer_ai_visual` and `hook_is_internal_anatomy`: same meaning as the "
+        "per-beat booleans described below, applied to the hook's own visual.\n"
         f"- Exactly {config.FACTS_PER_VIDEO} facts, ranked {config.FACTS_PER_VIDEO} (least "
         "surprising) down to 1 (most surprising/mind-blowing) — this is a countdown, so order "
         "the `facts` array from rank 5 to rank 1.\n"
@@ -289,11 +305,17 @@ def _build_script_prompt(topic: dict) -> str:
         "- Each beat needs a `source_hint`: the type of source it would come from (e.g. "
         '"NASA JPL", "peer-reviewed marine biology study") — not a fabricated URL.\n'
         "- Each beat needs a `prefer_ai_visual` boolean: true if the visual_keywords describe "
-        "a specific real subject (a particular species' distinctive behavior, a named "
-        "phenomenon, a specific artifact/event) that generic stock photo libraries are "
-        "unlikely to have an accurate match for; false if they describe a generic, "
-        "commonly-photographed concept (oceans, brains, lightning, space, generic lab/animal "
-        "photography) that stock libraries typically cover well.\n"
+        "a specific real subject that generic stock photo libraries are unlikely to have an "
+        "accurate match for — a particular species' distinctive behavior, a named phenomenon, "
+        "a specific artifact/event, OR any organism/subject that is rare, deep-sea, "
+        "expedition-only, microscopic, extinct, or otherwise not something an ordinary "
+        "photographer could easily go photograph (default to true for these — stock sites are "
+        "flooded with generic/wrong-species substitutes for exactly this kind of subject, e.g. "
+        "searching a specific hydrothermal-vent species returns whatever unrelated worm or "
+        "forest-floor photo tagged similarly). False only for genuinely generic, "
+        "commonly-and-correctly-photographed concepts (oceans, brains, lightning, space, "
+        "common animals like dogs/lions/eagles, generic lab equipment) that stock libraries "
+        "reliably have accurate matches for.\n"
         "- Each beat needs an `is_internal_anatomy` boolean: true only if the visual_keywords "
         "depict something no camera could photograph directly in real life — an internal "
         "organ cross-section, a tissue/cellular layer, something that would require cutting "
@@ -328,8 +350,9 @@ def _build_verification_prompt(script: dict) -> str:
 
 def _call_llm(topic: dict) -> dict:
     prompt = _build_script_prompt(topic)
-    # Up to 5 facts x 2 beats = 10 fact-beats, each with several fields.
-    return llm_client.complete_json(prompt, max_tokens=2200)
+    # Up to 5 facts x 2 beats = 10 fact-beats, each with several fields, plus
+    # the hook's own visual fields.
+    return llm_client.complete_json(prompt, max_tokens=2400)
 
 
 def _call_verification_llm(script: dict) -> list[dict]:
