@@ -182,8 +182,8 @@ def _generate_image(keyword: str, out_dir: Path, label: str, is_internal_anatomy
     raise ValueError(f"Unsupported IMAGE_GEN_PROVIDER: {config.IMAGE_GEN_PROVIDER!r}")
 
 
-REPLICATE_ATTEMPTS = 4
-REPLICATE_RETRY_DELAY_SECONDS = 10  # Replicate's own 429s report resetting in ~7s under throttling
+REPLICATE_ATTEMPTS = 6
+REPLICATE_RETRY_DELAY_SECONDS = 15  # Replicate's own 429s report resetting in ~7s under throttling
 
 
 def _generate_image_replicate(prompt: str, out_dir: Path, label: str) -> Path:
