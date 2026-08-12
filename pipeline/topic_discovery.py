@@ -8,15 +8,11 @@ topics so the channel doesn't repeat itself.
 No external scraping needed for this niche — topics are LLM-generated from a
 seed category list (see config.SCIENCE_CATEGORIES), which keeps this stage
 simple and dependency-free.
-
-TODO (Claude Code): implement `_call_llm` using config.LLM_PROVIDER /
-config.LLM_API_KEY. Test this file standalone first, with a hardcoded
-category, before wiring it into the orchestrator.
 """
 import json
 import random
 
-from pipeline import config
+from pipeline import config, llm_client
 
 
 def load_used_topics() -> list[str]:
@@ -42,20 +38,35 @@ def pick_topic() -> dict:
     used = load_used_topics()
     category = random.choice(config.SCIENCE_CATEGORIES)
 
-    # TODO: replace with a real LLM call. Prompt should:
-    #   - ask for ONE specific, narrow topic within `category`
-    #   - explicitly exclude anything in `used` (pass the list in the prompt)
-    #   - return a short topic string, not a full script
     topic = _call_llm(category=category, exclude=used)
+    if topic in used:
+        # Model ignored the exclusion list once — retry with the near-miss added.
+        topic = _call_llm(category=category, exclude=used + [topic])
 
     save_used_topic(topic)
     return {"category": category, "topic": topic}
 
 
-def _call_llm(category: str, exclude: list[str]) -> str:
-    raise NotImplementedError(
-        "Wire up your LLM provider here. See config.LLM_PROVIDER / config.LLM_API_KEY."
+def _build_prompt(category: str, exclude: list[str]) -> str:
+    exclusions = "\n".join(f"- {t}" for t in exclude) if exclude else "(none yet)"
+    return (
+        "You are picking a topic for a science-facts YouTube Short in the "
+        f'category "{category}".\n\n'
+        "Return ONE specific, narrow topic suitable for a '5 facts about X' "
+        "video. It should be concrete enough to support 5 distinct, "
+        'verifiable facts, but narrow enough to feel fresh (e.g. "why black '
+        'holes glow at the edges" rather than just "black holes").\n\n'
+        "Do NOT repeat or closely overlap with any of these already-used "
+        f"topics:\n{exclusions}\n\n"
+        "Respond with ONLY the topic as a short phrase (under 12 words). "
+        "No quotes, no numbering, no explanation."
     )
+
+
+def _call_llm(category: str, exclude: list[str]) -> str:
+    prompt = _build_prompt(category, exclude)
+    raw = llm_client.complete(prompt, max_tokens=60)
+    return raw.strip().strip('"').strip("'")
 
 
 if __name__ == "__main__":

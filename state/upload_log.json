@@ -1,3 +1,12 @@
 {
-  "uploads": []
+  "uploads": [
+    {
+      "topic": "Why Venus rotates backwards compared to other planets",
+      "category": "space and astronomy",
+      "video_id": "8r5bOPz04Vo",
+      "format": "hook",
+      "hook_style": "curiosity_gap",
+      "uploaded_at": "2026-08-12T12:20:12.317223+00:00"
+    }
+  ]
 }

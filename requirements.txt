@@ -8,9 +8,13 @@ openai>=1.40
 # TTS
 elevenlabs>=1.5
 
-# Video assembly
-moviepy>=1.0.3
-Pillow>=10.0
+# AI image generation fallback (visuals.py)
+replicate>=1.0
+
+# Video assembly (pipeline/assemble.py targets the MoviePy 2.x API)
+moviepy>=2.0,<3.0
+numpy>=1.24
+Pillow>=10.1  # >=10.1 for ImageFont.load_default(size=...)
 
 # Captions (only needed if not using TTS-provided timestamps)
 openai-whisper>=20231117

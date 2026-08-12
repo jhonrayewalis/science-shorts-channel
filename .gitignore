@@ -4,7 +4,4 @@ __pycache__/
 .venv/
 venv/
 render/
-*.mp4
-*.wav
-*.mp3
 .DS_Store

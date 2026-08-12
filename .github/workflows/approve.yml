@@ -1,0 +1,59 @@
+name: Approve and publish reviewed short
+
+# Manually triggered from the Actions tab once you've reviewed a video from
+# a "Generate science short" run. Downloads that exact run's artifact
+# (final.mp4 + pending_review.json) and uploads it as-is — this does NOT
+# regenerate the script/video, so what you approved is exactly what
+# publishes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      generate_run_id:
+        description: >-
+          Run ID of the "Generate science short" run whose video you
+          reviewed (the number in that run's URL, e.g. .../actions/runs/1234567890)
+        required: true
+        type: string
+
+permissions:
+  contents: write  # to commit state/upload_log.json after publishing
+  actions: read     # to download an artifact from a different (past) run
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download the reviewed render
+        uses: actions/download-artifact@v4
+        with:
+          name: pending-review-${{ inputs.generate_run_id }}
+          path: render/pending
+          run-id: ${{ inputs.generate_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to YouTube
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          UPLOAD_VISIBILITY: ${{ vars.UPLOAD_VISIBILITY || 'private' }}
+          CONTAINS_SYNTHETIC_MEDIA: ${{ vars.CONTAINS_SYNTHETIC_MEDIA || 'false' }}
+        run: python -m pipeline.orchestrator --upload-pending render/pending
+
+      - name: Commit updated upload log
+        run: |
+          git config user.name "science-shorts-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/upload_log.json
+          git diff --staged --quiet || git commit -m "Log upload $(date -u +%Y-%m-%d)"
+          git push

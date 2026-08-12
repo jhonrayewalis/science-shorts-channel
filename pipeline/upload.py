@@ -1,22 +1,19 @@
 """
 Stage 8: Upload.
 
-Resumable upload to YouTube via the Data API v3, with the altered/synthetic
-content disclosure set on the video.
+Resumable upload to YouTube via the Data API v3.
 
-TODO (Claude Code):
-  1. One-time setup: create OAuth credentials in Google Cloud Console
-     (YouTube Data API v3 enabled), run a local consent flow ONCE to get a
-     refresh token, then put client id/secret/refresh token in .env
-     (locally) and GitHub Actions secrets (production).
-  2. Implement `_build_youtube_client` using google-auth + the refresh token
-     (no interactive login needed after the one-time setup).
-  3. Confirm the exact API field for synthetic-content disclosure against
-     the current YouTube Data API docs before shipping — this is a
-     policy-relevant field and worth double-checking against the live docs
-     rather than assuming the field name.
+Sets status.containsSyntheticMedia per config.CONTAINS_SYNTHETIC_MEDIA
+(confirmed current as of the YouTube Data API docs: added 2024-10-30, still
+listed under Videos.status). Defaults to False — see the comment above
+config.CONTAINS_SYNTHETIC_MEDIA for why this channel's format doesn't
+trigger YouTube's disclosure requirement by default.
 """
 from pathlib import Path
+
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 from pipeline import config
 
@@ -38,8 +35,7 @@ def upload_video(video_path: Path, metadata: dict) -> str:
         "status": {
             "privacyStatus": config.UPLOAD_VISIBILITY,
             "selfDeclaredMadeForKids": False,
-            # TODO: confirm current field name for the synthetic/altered
-            # content disclosure against the live YouTube Data API docs.
+            "containsSyntheticMedia": config.CONTAINS_SYNTHETIC_MEDIA,
         },
     }
 
@@ -47,13 +43,27 @@ def upload_video(video_path: Path, metadata: dict) -> str:
 
 
 def _build_youtube_client():
-    raise NotImplementedError(
-        "Build an authenticated googleapiclient client using config.YOUTUBE_* creds."
+    creds = Credentials(
+        token=None,
+        refresh_token=config.YOUTUBE_REFRESH_TOKEN,
+        client_id=config.YOUTUBE_CLIENT_ID,
+        client_secret=config.YOUTUBE_CLIENT_SECRET,
+        token_uri="https://oauth2.googleapis.com/token",
     )
+    return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
 def _do_resumable_upload(youtube, video_path: Path, body: dict) -> str:
-    raise NotImplementedError("Use MediaFileUpload + youtube.videos().insert(...).execute()")
+    media = MediaFileUpload(str(video_path), mimetype="video/mp4", resumable=True)
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"Upload progress: {int(status.progress() * 100)}%")
+
+    return response["id"]
 
 
 if __name__ == "__main__":

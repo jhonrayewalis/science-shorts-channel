@@ -1,0 +1,24 @@
+{
+  "_readme": "Map each music filename in this folder (exact filename) to its attribution info. Set requires_attribution to false for tracks that need none (e.g. Pixabay). Any track file placed in this folder without an entry here still works, but pipeline/music_attribution.py prints a loud console warning every time it's picked, since its license terms are otherwise unknown.",
+  "Alegend - Infinity (freetouse.com).mp3": {
+    "title": "Infinity",
+    "artist": "Alegend",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
+  },
+  "Epic Spectrum - Wandering (freetouse.com).mp3": {
+    "title": "Wandering",
+    "artist": "Epic Spectrum",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
+  },
+  "Pufino - Eternity (freetouse.com).mp3": {
+    "title": "Eternity",
+    "artist": "Pufino",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
+  }
+}

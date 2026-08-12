@@ -1,14 +1,23 @@
-name: Publish daily short
+name: Generate science short (approval gate)
+
+# Runs the pipeline unattended on a schedule, but ALWAYS stops before
+# uploading — REQUIRE_MANUAL_APPROVAL is hardcoded true below, not read from
+# a repo variable, so an unset/misconfigured variable can never silently
+# skip the approval gate. Publishing an approved run is a separate,
+# manually-triggered step: see .github/workflows/approve.yml.
 
 on:
   schedule:
-    # Runs at 14:00 UTC daily — adjust to your preferred publish time.
+    # Runs at 14:00 UTC daily — adjust to your preferred generation time.
     # Cron uses UTC regardless of your local timezone.
     - cron: "0 14 * * *"
   workflow_dispatch: {}  # lets you trigger a manual run from the Actions tab for testing
 
+permissions:
+  contents: write  # to commit state/used_topics.json back after the run
+
 jobs:
-  publish:
+  generate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,22 +32,30 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Run pipeline
+      - name: Run pipeline (stops at the approval gate)
         env:
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           TTS_API_KEY: ${{ secrets.TTS_API_KEY }}
           TTS_VOICE_ID: ${{ vars.TTS_VOICE_ID }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          IMAGE_GEN_PROVIDER: ${{ vars.IMAGE_GEN_PROVIDER }}
           IMAGE_GEN_API_KEY: ${{ secrets.IMAGE_GEN_API_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          UPLOAD_VISIBILITY: ${{ vars.UPLOAD_VISIBILITY }}
-          REQUIRE_MANUAL_APPROVAL: ${{ vars.REQUIRE_MANUAL_APPROVAL }}
+          # Hardcoded, not ${{ vars.REQUIRE_MANUAL_APPROVAL }} — see comment above.
+          REQUIRE_MANUAL_APPROVAL: "true"
         run: python -m pipeline.orchestrator
+
+      - name: Find this run's render directory
+        id: find_dir
+        run: echo "dir=$(ls -td render/*/ | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload rendered video + metadata for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: pending-review-${{ github.run_id }}
+          path: ${{ steps.find_dir.outputs.dir }}
+          retention-days: 30
 
       - name: Commit updated state files
         run: |
