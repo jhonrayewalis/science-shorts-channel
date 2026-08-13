@@ -20,5 +20,26 @@
     "requires_attribution": true,
     "source_name": "Free To Use",
     "source_url": "https://freetouse.com/music"
+  },
+  "Aylex - Legacy (freetouse.com).mp3": {
+    "title": "Legacy",
+    "artist": "Aylex",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
+  },
+  "Sunova - Heroes (freetouse.com).mp3": {
+    "title": "Heroes",
+    "artist": "Sunova",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
+  },
+  "Walen - Final Scene (freetouse.com).mp3": {
+    "title": "Final Scene",
+    "artist": "Walen",
+    "requires_attribution": true,
+    "source_name": "Free To Use",
+    "source_url": "https://freetouse.com/music"
   }
 }
