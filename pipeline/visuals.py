@@ -22,11 +22,43 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
-from pipeline import config, script_writer
+from pipeline import captions, config, script_writer
 
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
+
+# --- End card (closer) branding ---
+#
+# The closer used to be sourced from Pexels like every other beat, searching
+# "subscribe"/"follow" for a matching stock photo. That query doesn't have an
+# abstract "please subscribe" concept to photograph, so Pexels' top result is
+# literal photos of phones/screens showing *someone's actual* subscribe
+# button — which come with whatever real channel name and branding happened
+# to be on that screen when the photo was shot (e.g. a stranger's YouTube
+# channel page). That's how another creator's name and handle ended up
+# burned into the pixels of every video's end card. It isn't an attribution
+# requirement (Pexels' license doesn't require credit), it's just what you
+# get when you search stock photography for a UI concept instead of building
+# the card yourself. Generating it locally guarantees our own branding, every
+# time, with no stock-photo lottery involved.
+BRAND_ICON_PATH = config.ASSETS_DIR / "branding" / "icon.png"
+
+END_CARD_BG_TOP = (8, 12, 22)  # sampled from assets/branding/icon.png
+END_CARD_BG_BOTTOM = (17, 24, 42)
+END_CARD_CYAN = (77, 214, 255)
+END_CARD_GOLD = (208, 148, 58)
+END_CARD_WHITE = (255, 255, 255)
+
+CHANNEL_NAME = "The Fact Dose"
+SUBSCRIBE_CTA = "for daily science facts"
+
+# captions.py burns karaoke captions over every line's audio, including the
+# closer's — so the card layout has to stay clear of that band or the
+# SUBSCRIBE button/text gets captions burned on top of it.
+CAPTION_SAFE_MARGIN = 40
 
 
 def source_visuals(script: dict, out_dir: Path) -> dict:
@@ -87,9 +119,7 @@ def _source_visuals_countdown(script: dict, out_dir: Path) -> dict:
             is_internal_anatomy=beat.get("is_internal_anatomy", False),
         )
 
-    result["closer"] = _source_for_keywords(
-        ["subscribe", "follow"], out_dir, "closer", used_photo_ids
-    )
+    result["closer"] = [_build_end_card(out_dir)]
     return result
 
 
@@ -134,6 +164,79 @@ def _search_pexels(
     out_path = out_dir / f"{label}.jpg"
     _download(photo["src"]["large2x"], out_path)
     return out_path
+
+
+def _build_end_card(out_dir: Path) -> Path:
+    """Renders the branded closer card locally — see the module-level comment
+    above BRAND_ICON_PATH for why this isn't sourced from Pexels."""
+    img = Image.new("RGB", (config.VIDEO_WIDTH, config.VIDEO_HEIGHT), END_CARD_BG_TOP)
+    _apply_vertical_gradient(img, END_CARD_BG_TOP, END_CARD_BG_BOTTOM)
+    draw = ImageDraw.Draw(img)
+
+    # Everything below this line is reserved for the karaoke caption band.
+    safe_bottom = captions.CAPTION_Y - CAPTION_SAFE_MARGIN
+
+    if BRAND_ICON_PATH.exists():
+        icon = _icon_with_transparent_bg(BRAND_ICON_PATH)
+        icon_size = int(config.VIDEO_WIDTH * 0.36)
+        icon = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+        icon_pos = ((config.VIDEO_WIDTH - icon_size) // 2, int(safe_bottom * 0.05))
+        img.paste(icon, icon_pos, icon)
+
+    title_font = ImageFont.load_default(size=88)
+    _draw_centered_text(
+        draw, CHANNEL_NAME, title_font, int(safe_bottom * 0.58),
+        END_CARD_WHITE, stroke_width=2, stroke_fill=(0, 0, 0),
+    )
+
+    button_font = ImageFont.load_default(size=48)
+    button_text = "SUBSCRIBE"
+    bbox = draw.textbbox((0, 0), button_text, font=button_font)
+    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    pad_x, pad_y = 56, 28
+    btn_w, btn_h = text_w + pad_x * 2, text_h + pad_y * 2
+    btn_x = (config.VIDEO_WIDTH - btn_w) // 2
+    btn_y = int(safe_bottom * 0.74)
+    draw.rounded_rectangle(
+        [btn_x, btn_y, btn_x + btn_w, btn_y + btn_h], radius=btn_h // 2, fill=END_CARD_GOLD
+    )
+    draw.text(
+        (btn_x + pad_x - bbox[0], btn_y + pad_y - bbox[1]), button_text,
+        font=button_font, fill=END_CARD_BG_TOP,
+    )
+
+    subtitle_font = ImageFont.load_default(size=38)
+    _draw_centered_text(draw, SUBSCRIBE_CTA, subtitle_font, btn_y + btn_h + 28, END_CARD_CYAN)
+
+    out_path = out_dir / "closer.png"
+    img.save(out_path)
+    return out_path
+
+
+def _apply_vertical_gradient(img: Image.Image, top: tuple, bottom: tuple) -> None:
+    width, height = img.size
+    gradient = Image.new("RGB", (1, height))
+    for y in range(height):
+        t = y / (height - 1)
+        gradient.putpixel((0, y), tuple(int(top[c] + (bottom[c] - top[c]) * t) for c in range(3)))
+    img.paste(gradient.resize((width, height)), (0, 0))
+
+
+def _draw_centered_text(draw, text: str, font, y: int, fill, stroke_width: int = 0, stroke_fill=None) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
+    x = (config.VIDEO_WIDTH - (bbox[2] - bbox[0])) // 2 - bbox[0]
+    draw.text((x, y), text, font=font, fill=fill, stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+
+def _icon_with_transparent_bg(path: Path, low: int = 20, high: int = 60) -> Image.Image:
+    """Chroma-keys out the icon's flat background so it composites cleanly
+    onto the card's gradient instead of showing a visible square behind it."""
+    rgb = np.array(Image.open(path).convert("RGB"), dtype=np.int16)
+    bg = rgb[0, 0]
+    dist = np.linalg.norm(rgb - bg, axis=-1)
+    alpha = (np.clip((dist - low) / (high - low), 0, 1) * 255).astype(np.uint8)
+    rgba = np.dstack([rgb.astype(np.uint8), alpha])
+    return Image.fromarray(rgba)
 
 
 IMAGE_PROMPT_TEMPLATE = (
