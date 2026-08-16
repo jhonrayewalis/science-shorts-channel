@@ -55,6 +55,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-08-15T10:09:26.527803+00:00"
+    },
+    {
+      "topic": "Why the Moon is slowly drifting away from Earth each year",
+      "category": "space and astronomy",
+      "video_id": "2d69qzIBexc",
+      "format": "hook",
+      "hook_style": "curiosity_gap",
+      "uploaded_at": "2026-08-16T07:16:56.053887+00:00"
     }
   ]
 }
