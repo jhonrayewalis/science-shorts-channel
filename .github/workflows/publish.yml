@@ -1,10 +1,11 @@
-name: Generate science short (approval gate)
+name: Generate science short
 
-# Runs the pipeline unattended on a schedule, but ALWAYS stops before
-# uploading — REQUIRE_MANUAL_APPROVAL is hardcoded true below, not read from
-# a repo variable, so an unset/misconfigured variable can never silently
-# skip the approval gate. Publishing an approved run is a separate,
-# manually-triggered step: see .github/workflows/approve.yml.
+# Runs the pipeline unattended on a schedule and publishes straight to
+# YouTube (public) once it renders successfully — no manual review step.
+# REQUIRE_MANUAL_APPROVAL and UPLOAD_VISIBILITY are hardcoded below, not
+# read from repo vars, so this behavior can't drift from an unrelated
+# variable change. See .github/workflows/retry-on-failure.yml for what
+# happens if a scheduled run fails.
 
 on:
   schedule:
@@ -33,7 +34,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Run pipeline (stops at the approval gate)
+      - name: Run pipeline and publish
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           TTS_API_KEY: ${{ secrets.TTS_API_KEY }}
@@ -43,18 +44,19 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          # Hardcoded, not ${{ vars.REQUIRE_MANUAL_APPROVAL }} — see comment above.
-          REQUIRE_MANUAL_APPROVAL: "true"
+          # Hardcoded, not ${{ vars.* }} — see comment above.
+          REQUIRE_MANUAL_APPROVAL: "false"
+          UPLOAD_VISIBILITY: "public"
         run: python -m pipeline.orchestrator
 
       - name: Find this run's render directory
         id: find_dir
         run: echo "dir=$(ls -td render/*/ | head -1)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload rendered video + metadata for review
+      - name: Upload rendered video + metadata (backup copy)
         uses: actions/upload-artifact@v4
         with:
-          name: pending-review-${{ github.run_id }}
+          name: published-${{ github.run_id }}
           path: ${{ steps.find_dir.outputs.dir }}
           retention-days: 30
 

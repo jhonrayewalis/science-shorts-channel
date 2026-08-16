@@ -1,0 +1,57 @@
+name: Retry failed science short run
+
+# Watches "Generate science short" runs. If one fails, reruns that exact
+# run via the Actions API — which increments its built-in run_attempt
+# counter — rather than tracking a separate counter ourselves. Because
+# this workflow re-fires on every completion of that run (including
+# reruns), it just checks run_attempt each time and stops retrying once
+# MAX_ATTEMPTS is hit, opening an issue instead so a genuinely broken
+# pipeline doesn't loop forever.
+
+on:
+  workflow_run:
+    workflows: ["Generate science short"]
+    types: [completed]
+
+permissions:
+  actions: write  # to rerun the failed workflow run
+  issues: write   # to open a notification issue if all retries fail
+
+env:
+  MAX_ATTEMPTS: 3  # initial run + up to 2 retries
+
+jobs:
+  retry-or-notify:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rerun the failed run, or open an issue if out of attempts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const maxAttempts = parseInt(process.env.MAX_ATTEMPTS, 10);
+
+            if (run.run_attempt < maxAttempts) {
+              console.log(`Run ${run.id} failed on attempt ${run.run_attempt}/${maxAttempts} — retrying.`);
+              await github.rest.actions.reRunWorkflow({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+              });
+            } else {
+              console.log(`Run ${run.id} failed on attempt ${run.run_attempt}/${maxAttempts} — giving up, opening an issue.`);
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Science short generation failed after ${maxAttempts} attempts`,
+                body: [
+                  `The "Generate science short" workflow failed ${maxAttempts} times in a row and was not retried further.`,
+                  ``,
+                  `Failed run: ${run.html_url}`,
+                  `Originally triggered: ${run.created_at}`,
+                  ``,
+                  `Check the logs, fix the underlying issue, then re-trigger manually from the Actions tab.`,
+                ].join("\n"),
+              });
+            }
