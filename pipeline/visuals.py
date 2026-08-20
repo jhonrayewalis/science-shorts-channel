@@ -289,22 +289,26 @@ REPLICATE_ATTEMPTS = 6
 REPLICATE_RETRY_DELAY_SECONDS = 15  # Replicate's own 429s report resetting in ~7s under throttling
 
 
+REPLICATE_POLL_INTERVAL_SECONDS = 2
+REPLICATE_POLL_TIMEOUT_SECONDS = 120  # generation itself finishes in seconds; this is a ceiling
+
+
 def _generate_image_replicate(prompt: str, out_dir: Path, label: str) -> Path:
     import time
 
-    import httpx
-    import replicate
-
-    # Accounts with under $5 credit get throttled to 6 requests/min with a
-    # burst of 1 (Replicate's own policy) — a video needing several images
-    # in a row (one per hook-format beat) can exceed that burst and either
-    # queue long enough to blow past a client-side read timeout, or get an
-    # explicit 429. ModelError ("Director: unexpected error handling
-    # prediction") is a separate, transient failure on Replicate's own
-    # infrastructure side, not caused by our prompt — also worth retrying.
-    # Note ModelError is a sibling of ReplicateError (both subclass
-    # ReplicateException), not a subclass of it, so it needs its own check.
-    client = replicate.Client(api_token=config.IMAGE_GEN_API_KEY, timeout=httpx.Timeout(240.0))
+    # The replicate SDK's client.run() normally blocks on a single HTTP
+    # request held open (via the "Prefer: wait" header) for up to ~60s while
+    # Replicate finishes the prediction. On this network that request
+    # reliably raises a ReadTimeout around the 60s mark instead of returning
+    # (reproduced with both the SDK and plain curl), even though generation
+    # itself only takes a few seconds. Worse, un-pinned "owner/name" model
+    # refs (like flux-schnell) return "version": null until the prediction
+    # resolves, which crashes the SDK's response parsing (pydantic requires
+    # a non-null version) on any non-terminal status. Posting without a wait
+    # header and polling manually with plain `requests` sidesteps both: each
+    # request is short-lived, and we parse the JSON ourselves.
+    model = config.IMAGE_GEN_MODEL or DEFAULT_IMAGE_MODELS["replicate"]
+    headers = {"Authorization": f"Bearer {config.IMAGE_GEN_API_KEY}"}
     model_input = {
         "prompt": prompt,
         "aspect_ratio": "9:16",  # matches the 1080x1920 Shorts frame exactly
@@ -312,25 +316,60 @@ def _generate_image_replicate(prompt: str, out_dir: Path, label: str) -> Path:
         "num_outputs": 1,
     }
 
-    output = None
+    # Accounts with under $5 credit get throttled to 6 requests/min with a
+    # burst of 1 (Replicate's own policy) — a video needing several images
+    # in a row (one per hook-format beat) can exceed that burst and either
+    # queue long enough to blow past a poll timeout, or get an explicit 429.
+    # A "failed" prediction whose error mentions "unexpected error handling
+    # prediction" is a separate, transient failure on Replicate's own
+    # infrastructure side, not caused by our prompt — also worth retrying.
     for attempt in range(REPLICATE_ATTEMPTS):
         try:
-            output = client.run(config.IMAGE_GEN_MODEL or DEFAULT_IMAGE_MODELS["replicate"], input=model_input)
-            break
-        except (httpx.TimeoutException, replicate.exceptions.ReplicateError, replicate.exceptions.ModelError) as exc:
-            is_throttled = isinstance(exc, replicate.exceptions.ReplicateError) and exc.status == 429
-            is_transient = isinstance(exc, (httpx.TimeoutException, replicate.exceptions.ModelError)) or is_throttled
-            if not is_transient:
-                raise
+            resp = requests.post(
+                f"https://api.replicate.com/v1/models/{model}/predictions",
+                headers=headers,
+                json={"input": model_input},
+                timeout=30,
+            )
+            if resp.status_code == 429 or resp.status_code >= 500:
+                if attempt == REPLICATE_ATTEMPTS - 1:
+                    resp.raise_for_status()
+                time.sleep(REPLICATE_RETRY_DELAY_SECONDS)
+                continue
+            resp.raise_for_status()
+            prediction = resp.json()
+            get_url = prediction["urls"]["get"]
+
+            deadline = time.monotonic() + REPLICATE_POLL_TIMEOUT_SECONDS
+            while prediction["status"] not in ("succeeded", "failed", "canceled"):
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"Replicate prediction {prediction['id']} still {prediction['status']!r} "
+                        f"after {REPLICATE_POLL_TIMEOUT_SECONDS}s"
+                    )
+                time.sleep(REPLICATE_POLL_INTERVAL_SECONDS)
+                prediction = requests.get(get_url, headers=headers, timeout=30).json()
+
+            if prediction["status"] == "succeeded":
+                output = prediction["output"]
+                output_url = output[0] if isinstance(output, list) else output
+                image_bytes = requests.get(output_url, timeout=30).content
+                out_path = out_dir / f"{label}.png"
+                out_path.write_bytes(image_bytes)
+                return out_path
+
+            error = str(prediction.get("error") or "")
+            is_transient = "unexpected error handling prediction" in error.lower()
+            if not is_transient or attempt == REPLICATE_ATTEMPTS - 1:
+                raise RuntimeError(f"Replicate prediction failed: {error}")
+            time.sleep(REPLICATE_RETRY_DELAY_SECONDS)
+
+        except (requests.Timeout, TimeoutError):
             if attempt == REPLICATE_ATTEMPTS - 1:
                 raise
             time.sleep(REPLICATE_RETRY_DELAY_SECONDS)
 
-    file_output = output[0] if isinstance(output, list) else output
-
-    out_path = out_dir / f"{label}.png"
-    out_path.write_bytes(file_output.read())
-    return out_path
+    raise RuntimeError("Replicate image generation failed after all retries")
 
 
 def _generate_image_openai(prompt: str, out_dir: Path, label: str) -> Path:
