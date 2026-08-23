@@ -159,6 +159,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-08-22T14:59:50.508887+00:00"
+    },
+    {
+      "topic": "Why time runs faster on GPS satellites than on Earth's surface",
+      "category": "physics",
+      "video_id": "7o-yRUcdB7A",
+      "format": "hook",
+      "hook_style": "what_if",
+      "uploaded_at": "2026-08-23T04:35:11.010323+00:00"
     }
   ]
 }
