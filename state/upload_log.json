@@ -183,6 +183,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-08-24T04:39:58.405733+00:00"
+    },
+    {
+      "topic": "Why the Rosetta Stone was written in three different scripts",
+      "category": "ancient history",
+      "video_id": "V_XNx16DtyU",
+      "format": "hook",
+      "hook_style": "surprising_claim",
+      "uploaded_at": "2026-08-26T09:08:35.687794+00:00"
     }
   ]
 }
