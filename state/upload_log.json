@@ -207,6 +207,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-08-28T07:15:41.728376+00:00"
+    },
+    {
+      "topic": "Why the Sun's corona is millions of degrees hotter than its surface",
+      "category": "space and astronomy",
+      "video_id": "_BC7PL-zdHo",
+      "format": "hook",
+      "hook_style": "explainer_setup",
+      "uploaded_at": "2026-08-28T21:59:08.622627+00:00"
     }
   ]
 }
