@@ -67,6 +67,18 @@ def run() -> None:
     script = script_writer.verify_facts(script)
     print(f"[2/8] Script written ({video_format} format) and fact-checked")
 
+    if script["flagged_facts"] and not config.REQUIRE_MANUAL_APPROVAL:
+        # Unattended run with claims fact-checked as inaccurate/disputed (not
+        # merely a hedged theory, which verify_facts already rewrote in
+        # place) — refuse to auto-publish. Raising fails the job, and
+        # retry-on-failure.yml reruns it fresh with a new random topic/script
+        # rather than retrying this same flagged one.
+        raise RuntimeError(
+            f"Refusing to auto-publish: fact-check flagged {script['flagged_facts']} as "
+            "inaccurate or disputed. Re-run for a fresh topic, or set "
+            "REQUIRE_MANUAL_APPROVAL=true to review flagged claims by hand."
+        )
+
     audio = tts.generate_voiceover(script, work_dir / "audio")
     print("[3/8] Voiceover generated")
 

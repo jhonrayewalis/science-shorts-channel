@@ -56,6 +56,15 @@ def _build_prompt(category: str, exclude: list[str]) -> str:
         "video. It should be concrete enough to support 5 distinct, "
         'verifiable facts, but narrow enough to feel fresh (e.g. "why black '
         'holes glow at the edges" rather than just "black holes").\n\n'
+        "This channel's credibility depends on not presenting speculation as "
+        "settled science, so avoid topics whose central claim is purely "
+        "speculative, philosophical, or untestable with no direct observational "
+        "evidence (e.g. multiverse theory, simulation theory, string theory's "
+        "extra dimensions, fringe/minority-view interpretations). A topic built "
+        "around a genuine, evidence-backed leading theory that just isn't fully "
+        "confirmed yet (e.g. a specific mechanism proposed for an observed "
+        "phenomenon) is still fine — the script will frame it as a theory, not "
+        "as settled fact.\n\n"
         "Do NOT repeat or closely overlap with any of these already-used "
         f"topics:\n{exclusions}\n\n"
         "Respond with ONLY the topic as a short phrase (under 12 words). "

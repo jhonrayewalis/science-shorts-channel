@@ -185,8 +185,20 @@ def _sanitize_text(text: str) -> str:
 
 def verify_facts(script: dict) -> dict:
     """
-    Lightweight accuracy pass: asks the model to fact-check its own claims
-    against what it knows, flagging anything it isn't confident about.
+    Lightweight accuracy + certainty pass: asks the model to fact-check its
+    own claims against what it knows, on two separate axes —
+    - `confidence`: is this claim accurate as stated at all
+    - `certainty`: is it settled science, a genuine leading theory/open
+      question, or a commonly-repeated but disputed/inaccurate claim
+    A claim can be high-confidence accurate while still describing a theory
+    rather than settled fact (e.g. a well-supported but unconfirmed
+    mechanism) — that's not an error, but it must be framed as a theory, not
+    flat fact. Beats classified "theory" get their text rewritten in place
+    with hedged phrasing ("scientists believe...", "the leading theory
+    suggests..."); beats classified "disputed" (myths, debunked or
+    poorly-replicated claims stated as fact) are flagged for rejection like
+    low-confidence claims, since rephrasing a myth as a "theory" would still
+    mislead viewers.
 
     Mutates and returns `script` with per-claim verification info and a
     top-level `flagged_facts` list (beat ids like "rank5_beat0" for
@@ -210,14 +222,33 @@ def _verify_countdown_facts(script: dict) -> dict:
         for i, beat in enumerate(fact["beats"]):
             claim_id = f"rank{fact['rank']}_beat{i}"
             verdict = verdict_by_id.get(
-                claim_id, {"confidence": "unknown", "note": "no verdict returned"}
+                claim_id,
+                {"confidence": "unknown", "certainty": "unknown", "note": "no verdict returned"},
             )
             beat["verification"] = verdict
-            if verdict.get("confidence") != "high":
+            if verdict.get("certainty") == "theory" and verdict.get("hedge"):
+                beat["text"] = _sanitize_text(verdict["hedge"])
+            if _should_reject(verdict):
                 flagged.append(claim_id)
 
     script["flagged_facts"] = flagged
     return script
+
+
+def _should_reject(verdict: dict) -> bool:
+    """
+    A "theory" claim is expected to carry less than "high" confidence — that
+    uncertainty is exactly why it's hedged rather than stated as fact, not a
+    sign something is wrong. Only reject it if it's flatly "disputed" (a
+    myth/debunked claim, however confident-sounding). Non-theory claims
+    still need "high" confidence to pass, since anything less means the
+    model itself doubts the claim regardless of how it's framed.
+    """
+    if verdict.get("certainty") == "disputed":
+        return True
+    if verdict.get("certainty") == "theory":
+        return False
+    return verdict.get("confidence") != "high"
 
 
 def _validate_countdown_script(script: dict) -> None:
@@ -347,15 +378,31 @@ def _build_verification_prompt(script: dict) -> str:
     ]
     return (
         "You are fact-checking claims for a science-facts video, using only your own "
-        f"knowledge (no browsing). For EACH of these {len(claims)} claims, assess how confident "
-        "you are that it is accurate as stated:\n\n"
+        f"knowledge (no browsing). For EACH of these {len(claims)} claims, assess it on two "
+        "separate axes:\n\n"
+        "1. `confidence`: how confident are you that this is accurate as stated, one of "
+        '"high", "medium", "low". Use "medium" or "low" for anything exaggerated, outdated, '
+        "or misremembered.\n"
+        '2. `certainty`: is the underlying claim "settled" (established scientific consensus), '
+        '"theory" (a genuine, evidence-backed leading theory, mechanism, or explanation that is '
+        "not yet fully confirmed, or a topic under legitimate ongoing scientific debate), or "
+        '"disputed" (a commonly repeated claim that is actually a myth, outdated, debunked, or '
+        "based on research that failed to replicate — even if it \"sounds right\"). Watch "
+        "especially for popular oversimplifications stated as hard fact (e.g. rounded-off "
+        "approximations presented as exact figures, or 'only X can do Y' claims that have "
+        "counterexamples).\n\n"
         f"{json.dumps(claims, indent=2)}\n\n"
         "Respond with ONLY a valid JSON array, no markdown fences, no commentary, one object "
         "per claim, in this exact shape:\n"
-        '[{"id": "rank5_beat0", "confidence": "high", "note": ""}, ...]\n\n'
-        'confidence must be exactly one of "high", "medium", "low". Use "medium" or "low" for '
-        "anything exaggerated, outdated, or misremembered, and use `note` to say what's "
-        "questionable and, if you know it, what the accurate version would be."
+        '[{"id": "rank5_beat0", "confidence": "high", "certainty": "settled", "note": "", '
+        '"hedge": ""}, ...]\n\n'
+        "Use `note` to say what's questionable and, if you know it, what the accurate version "
+        'would be. When (and only when) `certainty` is "theory", also fill `hedge` with a '
+        "rewritten version of the claim's text that adds appropriate hedge language (e.g. "
+        "\"scientists believe...\", \"the leading theory suggests...\", \"current evidence "
+        'points to..."), staying close to the original length and tone since it will replace '
+        'the claim verbatim in the video\'s narration. Leave `hedge` as an empty string for '
+        '"settled" or "disputed" claims.'
     )
 
 
@@ -383,9 +430,17 @@ def _verify_hook_claims(script: dict) -> dict:
     flagged = []
     claim_verifications = {}
     for claim_id in claim_ids:
-        verdict = verdict_by_id.get(claim_id, {"confidence": "unknown", "note": "no verdict returned"})
+        verdict = verdict_by_id.get(
+            claim_id, {"confidence": "unknown", "certainty": "unknown", "note": "no verdict returned"}
+        )
         claim_verifications[claim_id] = verdict
-        if verdict.get("confidence") != "high":
+        if verdict.get("certainty") == "theory" and verdict.get("hedge"):
+            if claim_id == "hook":
+                script["hook"] = _sanitize_text(verdict["hedge"])
+            else:
+                beat_index = int(claim_id.removeprefix("beat_"))
+                script["payoff_beats"][beat_index]["text"] = _sanitize_text(verdict["hedge"])
+        if _should_reject(verdict):
             flagged.append(claim_id)
 
     script["claim_verifications"] = claim_verifications
@@ -467,16 +522,32 @@ def _build_hook_verification_prompt(script: dict) -> str:
     )
     return (
         "You are fact-checking claims for a science-facts video, using only your own "
-        "knowledge (no browsing). For EACH of these claims, assess how confident you are "
-        'that it is accurate as stated (a pure question with no factual assertion should '
-        'get "high" confidence by default):\n\n'
+        "knowledge (no browsing). For EACH of these claims, assess it on two separate axes "
+        '(a pure question with no factual assertion should get "high" confidence and '
+        '"settled" certainty by default):\n\n'
+        "1. `confidence`: how confident are you that this is accurate as stated, one of "
+        '"high", "medium", "low". Use "medium" or "low" for anything exaggerated, outdated, '
+        "or misremembered.\n"
+        '2. `certainty`: is the underlying claim "settled" (established scientific consensus), '
+        '"theory" (a genuine, evidence-backed leading theory, mechanism, or explanation that is '
+        "not yet fully confirmed, or a topic under legitimate ongoing scientific debate), or "
+        '"disputed" (a commonly repeated claim that is actually a myth, outdated, debunked, or '
+        "based on research that failed to replicate — even if it \"sounds right\"). Watch "
+        "especially for popular oversimplifications stated as hard fact (e.g. rounded-off "
+        "approximations presented as exact figures, or 'only X can do Y' claims that have "
+        "counterexamples).\n\n"
         f"{json.dumps(claims, indent=2)}\n\n"
         "Respond with ONLY a valid JSON array, no markdown fences, no commentary, one object "
         "per claim, in this exact shape:\n"
-        '[{"id": "hook", "confidence": "high", "note": ""}, ...]\n\n'
-        'confidence must be exactly one of "high", "medium", "low". Use "medium" or "low" for '
-        "anything exaggerated, outdated, or misremembered, and use `note` to say what's "
-        "questionable and, if you know it, what the accurate version would be."
+        '[{"id": "hook", "confidence": "high", "certainty": "settled", "note": "", "hedge": ""}, '
+        "...]\n\n"
+        "Use `note` to say what's questionable and, if you know it, what the accurate version "
+        'would be. When (and only when) `certainty` is "theory", also fill `hedge` with a '
+        "rewritten version of the claim's text that adds appropriate hedge language (e.g. "
+        "\"scientists believe...\", \"the leading theory suggests...\", \"current evidence "
+        'points to..."), staying close to the original length and tone since it will replace '
+        'the claim verbatim in the video\'s narration. Leave `hedge` as an empty string for '
+        '"settled" or "disputed" claims.'
     )
 
 
