@@ -39,6 +39,7 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           TTS_API_KEY: ${{ secrets.TTS_API_KEY }}
           TTS_VOICE_ID: ${{ vars.TTS_VOICE_ID }}
+          TTS_VOICE_ID_2: ${{ vars.TTS_VOICE_ID_2 }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           IMAGE_GEN_API_KEY: ${{ secrets.IMAGE_GEN_API_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}

@@ -13,6 +13,7 @@ script_writer.py): "countdown" (hook/facts/closer) and "hook" (hook/payoff).
 """
 import base64
 import difflib
+import random
 import re
 from pathlib import Path
 
@@ -57,22 +58,27 @@ def generate_voiceover(script: dict, out_dir: Path) -> dict:
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Picked once per video (not per line) so a single video doesn't have its
+    # narrator change mid-clip; random rather than alternating to match how
+    # orchestrator.py already picks VIDEO_FORMATS, with no extra state to persist.
+    voice_id = random.choice(config.TTS_VOICE_IDS)
+
     if script["format"] == "hook":
-        return _generate_voiceover_hook(script, out_dir)
-    return _generate_voiceover_countdown(script, out_dir)
+        return _generate_voiceover_hook(script, out_dir, voice_id)
+    return _generate_voiceover_countdown(script, out_dir, voice_id)
 
 
-def _generate_voiceover_countdown(script: dict, out_dir: Path) -> dict:
-    hook_audio, hook_ts = _synthesize_line(script["hook"], out_dir / "hook.mp3")
+def _generate_voiceover_countdown(script: dict, out_dir: Path, voice_id: str) -> dict:
+    hook_audio, hook_ts = _synthesize_line(script["hook"], out_dir / "hook.mp3", voice_id)
 
     fact_audio = []
     fact_ts = []
     for i, beat in enumerate(script_writer.flatten_countdown_facts(script)):
-        audio, ts = _synthesize_line(beat["text"], out_dir / f"fact_{i}.mp3")
+        audio, ts = _synthesize_line(beat["text"], out_dir / f"fact_{i}.mp3", voice_id)
         fact_audio.append(audio)
         fact_ts.append(ts)
 
-    closer_audio, closer_ts = _synthesize_line(script["closer"], out_dir / "closer.mp3")
+    closer_audio, closer_ts = _synthesize_line(script["closer"], out_dir / "closer.mp3", voice_id)
 
     return {
         "hook_audio": hook_audio,
@@ -86,13 +92,13 @@ def _generate_voiceover_countdown(script: dict, out_dir: Path) -> dict:
     }
 
 
-def _generate_voiceover_hook(script: dict, out_dir: Path) -> dict:
-    hook_audio, hook_ts = _synthesize_line(script["hook"], out_dir / "hook.mp3")
+def _generate_voiceover_hook(script: dict, out_dir: Path, voice_id: str) -> dict:
+    hook_audio, hook_ts = _synthesize_line(script["hook"], out_dir / "hook.mp3", voice_id)
 
     beat_audio = []
     beat_ts = []
     for i, beat in enumerate(script["payoff_beats"]):
-        audio, ts = _synthesize_line(beat["text"], out_dir / f"beat_{i}.mp3")
+        audio, ts = _synthesize_line(beat["text"], out_dir / f"beat_{i}.mp3", voice_id)
         beat_audio.append(audio)
         beat_ts.append(ts)
 
@@ -103,7 +109,7 @@ def _generate_voiceover_hook(script: dict, out_dir: Path) -> dict:
     }
 
 
-def _synthesize_line(text: str, out_path: Path) -> tuple[Path, list[dict]]:
+def _synthesize_line(text: str, out_path: Path, voice_id: str) -> tuple[Path, list[dict]]:
     """
     Returns (path_to_audio_file, word_timestamps) where word_timestamps is a
     list like [{"word": "The", "start": 0.0, "end": 0.18}, ...]
@@ -115,10 +121,10 @@ def _synthesize_line(text: str, out_path: Path) -> tuple[Path, list[dict]]:
     audio, words = None, None
     for attempt in range(TTS_QA_ATTEMPTS):
         if config.TTS_PROVIDER == "elevenlabs":
-            audio, words = _synthesize_elevenlabs(text, out_path)
+            audio, words = _synthesize_elevenlabs(text, out_path, voice_id)
             transcript_words = _transcribe_word_timestamps(audio)
         elif config.TTS_PROVIDER == "openai":
-            audio, words = _synthesize_openai(text, out_path)
+            audio, words = _synthesize_openai(text, out_path, voice_id)
             transcript_words = words  # already came from a Whisper transcription
         else:
             raise ValueError(f"Unknown TTS_PROVIDER: {config.TTS_PROVIDER!r}")
@@ -147,15 +153,15 @@ def _transcript_similarity(intended_text: str, transcript_words: list[dict]) -> 
     return difflib.SequenceMatcher(a=intended, b=transcribed).ratio()
 
 
-def _synthesize_elevenlabs(text: str, out_path: Path) -> tuple[Path, list[dict]]:
+def _synthesize_elevenlabs(text: str, out_path: Path, voice_id: str) -> tuple[Path, list[dict]]:
     from elevenlabs.client import ElevenLabs
 
-    if not config.TTS_VOICE_ID:
+    if not voice_id:
         raise ValueError("TTS_VOICE_ID is required for the elevenlabs provider.")
 
     client = ElevenLabs(api_key=config.TTS_API_KEY)
     response = client.text_to_speech.convert_with_timestamps(
-        voice_id=config.TTS_VOICE_ID,
+        voice_id=voice_id,
         text=text,
         model_id=config.TTS_MODEL or DEFAULT_MODELS["elevenlabs"],
         output_format="mp3_44100_128",
@@ -198,13 +204,13 @@ def _words_from_character_alignment(alignment) -> list[dict]:
     return words
 
 
-def _synthesize_openai(text: str, out_path: Path) -> tuple[Path, list[dict]]:
+def _synthesize_openai(text: str, out_path: Path, voice_id: str) -> tuple[Path, list[dict]]:
     import openai
 
     client = openai.OpenAI(api_key=config.TTS_API_KEY)
     response = client.audio.speech.create(
         model=config.TTS_MODEL or DEFAULT_MODELS["openai"],
-        voice=config.TTS_VOICE_ID or "alloy",
+        voice=voice_id or "alloy",
         input=text,
         response_format="mp3",
     )
