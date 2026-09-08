@@ -263,6 +263,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-09-08T13:50:08.979430+00:00"
+    },
+    {
+      "topic": "Why gravitational lenses create multiple images of the same distant galaxy",
+      "category": "physics",
+      "video_id": "bHgdlsoPbw4",
+      "format": "hook",
+      "hook_style": "myth_bust",
+      "uploaded_at": "2026-09-08T17:52:14.835467+00:00"
     }
   ]
 }
