@@ -247,6 +247,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-09-08T07:29:18.507768+00:00"
+    },
+    {
+      "topic": "Why tornadoes sometimes appear green before striking",
+      "category": "weather and climate",
+      "video_id": "ik7JPLb-hbM",
+      "format": "hook",
+      "hook_style": "curiosity_gap",
+      "uploaded_at": "2026-09-08T13:05:50.919769+00:00"
     }
   ]
 }
