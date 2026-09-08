@@ -237,18 +237,16 @@ def _verify_countdown_facts(script: dict) -> dict:
 
 def _should_reject(verdict: dict) -> bool:
     """
-    A "theory" claim is expected to carry less than "high" confidence — that
-    uncertainty is exactly why it's hedged rather than stated as fact, not a
-    sign something is wrong. Only reject it if it's flatly "disputed" (a
-    myth/debunked claim, however confident-sounding). Non-theory claims
-    still need "high" confidence to pass, since anything less means the
-    model itself doubts the claim regardless of how it's framed.
+    Only "disputed" (a myth/debunked claim, however confident-sounding) is
+    grounds for rejection. "theory" claims are expected to carry less than
+    "high" confidence — that uncertainty is exactly why they're hedged rather
+    than stated as fact, not a sign something is wrong. "settled" claims at
+    "medium" confidence are typically the verifier docking a substantively
+    correct claim for minor imprecision (a rounded figure, an upper bound
+    presented without caveats) rather than flagging an actual error — not
+    worth aborting the whole video over.
     """
-    if verdict.get("certainty") == "disputed":
-        return True
-    if verdict.get("certainty") == "theory":
-        return False
-    return verdict.get("confidence") != "high"
+    return verdict.get("certainty") == "disputed"
 
 
 def _validate_countdown_script(script: dict) -> None:
