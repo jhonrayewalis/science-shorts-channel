@@ -239,6 +239,14 @@
       "format": "hook",
       "hook_style": "explainer_setup",
       "uploaded_at": "2026-09-01T09:55:00.239491+00:00"
+    },
+    {
+      "topic": "Why prairie dogs have different alarm calls for different predators",
+      "category": "animal behavior",
+      "video_id": "EIHsQDV4To8",
+      "format": "countdown",
+      "hook_style": null,
+      "uploaded_at": "2026-09-08T07:29:18.507768+00:00"
     }
   ]
 }
