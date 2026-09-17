@@ -319,6 +319,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-09-11T07:33:06.832441+00:00"
+    },
+    {
+      "topic": "Why sound waves can levitate objects through acoustic pressure",
+      "category": "physics",
+      "video_id": "cO3Gt3lkgxc",
+      "format": "hook",
+      "hook_style": "what_if",
+      "uploaded_at": "2026-09-17T11:05:30.203204+00:00"
     }
   ]
 }
