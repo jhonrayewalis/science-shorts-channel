@@ -57,7 +57,9 @@ TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs")
 TTS_API_KEY = os.getenv("TTS_API_KEY")
 TTS_VOICE_ID = os.getenv("TTS_VOICE_ID")
 TTS_VOICE_ID_2 = os.getenv("TTS_VOICE_ID_2", "")  # optional; adds a second voice to pick from at random
-TTS_VOICE_IDS = [v for v in [TTS_VOICE_ID, TTS_VOICE_ID_2] if v] or [TTS_VOICE_ID]  # preserve prior None-passthrough behavior (openai provider defaults to "alloy") when unset
+TTS_VOICE_ID_3 = os.getenv("TTS_VOICE_ID_3", "")  # optional; adds a third voice to pick from at random
+TTS_VOICE_ID_4 = os.getenv("TTS_VOICE_ID_4", "")  # optional; adds a fourth voice to pick from at random
+TTS_VOICE_IDS = [v for v in [TTS_VOICE_ID, TTS_VOICE_ID_2, TTS_VOICE_ID_3, TTS_VOICE_ID_4] if v] or [TTS_VOICE_ID]  # preserve prior None-passthrough behavior (openai provider defaults to "alloy") when unset
 TTS_MODEL = os.getenv("TTS_MODEL", "")  # optional override; provider-specific default used if blank
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
