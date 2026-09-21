@@ -399,6 +399,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-09-20T17:28:14.607188+00:00"
+    },
+    {
+      "topic": "Why copper turns green when exposed to air and moisture",
+      "category": "chemistry in everyday life",
+      "video_id": "KRfyGI_YIsY",
+      "format": "hook",
+      "hook_style": "what_if",
+      "uploaded_at": "2026-09-21T08:02:13.462883+00:00"
     }
   ]
 }
