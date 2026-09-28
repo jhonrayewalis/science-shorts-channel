@@ -511,6 +511,14 @@
       "format": "countdown",
       "hook_style": null,
       "uploaded_at": "2026-09-27T18:19:04.379434+00:00"
+    },
+    {
+      "topic": "Why your blood changes color from bright red to dark red",
+      "category": "human body",
+      "video_id": "_zRQIr7e4sg",
+      "format": "hook",
+      "hook_style": "surprising_claim",
+      "uploaded_at": "2026-09-28T08:42:34.654972+00:00"
     }
   ]
 }
